@@ -26,18 +26,17 @@
 #include <string>
 #include <unistd.h>
 #include <vector>
+#include <thread>
 
 #include "llama.h"
-#include "llama_msgs/msg/token_prob.hpp"
-#include "llama_msgs/msg/token_prob_array.hpp"
+#include "llama_msgs/TokenProb.h"
+#include "llama_msgs/TokenProbArray.h"
 #include "llama_ros/llama_node.hpp"
 
 using namespace llama_ros;
-using std::placeholders::_1;
-using std::placeholders::_2;
 
-LlamaNode::LlamaNode() : rclcpp::Node("llama_node") {
-
+LlamaNode::LlamaNode()
+    : pnh_("~") {
   std::string model;
   std::string lora_adapter;
   std::string lora_base;
@@ -51,88 +50,52 @@ LlamaNode::LlamaNode() : rclcpp::Node("llama_node") {
   std::string prompt;
   std::string file_path;
 
+  pnh_.param("use_default_sampling_config", use_default_sampling_config_, false);
+
   auto context_params = llama_context_default_params();
   auto eval_params = llama_eval_default_params();
 
-  // node params from llama.cpp common.h
-  this->declare_parameters<int32_t>("", {
-                                            {"seed", -1},
-                                            {"n_ctx", 512},
-                                            {"n_batch", 512},
-                                            {"n_gqa", 1},
-                                            {"n_gpu_layers", 0},
-                                            {"main_gpu", 0},
-                                            {"n_threads", 1},
-                                            {"n_predict", 128},
-                                            {"n_keep", -1},
-                                        });
-  this->declare_parameters<std::string>("", {
-                                                {"model", ""},
-                                                {"lora_adapter", ""},
-                                                {"lora_base", ""},
-                                                {"prompt", ""},
-                                                {"file", ""},
-                                                {"prefix", ""},
-                                                {"suffix", ""},
-                                                {"stop", ""},
-                                            });
-  this->declare_parameters<float>("", {
-                                          {"rms_norm_eps", 5e-6f},
-                                          {"rope_freq_base", 10000.0f},
-                                          {"rope_freq_scale", 1.0f},
-                                      });
-  this->declare_parameter<std::vector<double>>("tensor_split",
-                                               std::vector<double>({0.0}));
-  this->declare_parameters<bool>("", {
-                                         {"low_vram", false},
-                                         {"mul_mat_q", false},
-                                         {"f16_kv", true},
-                                         {"logits_all", false},
-                                         {"vocab_only", false},
-                                         {"use_mmap", true},
-                                         {"use_mlock", false},
-                                         {"embedding", true},
-                                         {"numa", false},
-                                     });
+  int seed_tmp;
+  pnh_.param("seed", seed_tmp, -1);
+  context_params.seed = static_cast<uint32_t>(seed_tmp);
 
-  this->get_parameter("seed", context_params.seed);
-  this->get_parameter("n_ctx", context_params.n_ctx);
-  this->get_parameter("n_batch", context_params.n_batch);
-  this->get_parameter("n_gqa", context_params.n_gqa);
-  this->get_parameter("rms_norm_eps", context_params.rms_norm_eps);
+  pnh_.param("n_ctx", context_params.n_ctx, 512);
+  pnh_.param("n_batch", context_params.n_batch, 512);
+  pnh_.param("n_gqa", context_params.n_gqa, 1);
+  pnh_.param("rms_norm_eps", context_params.rms_norm_eps, 5e-6f);
 
-  this->get_parameter("n_gpu_layers", context_params.n_gpu_layers);
-  this->get_parameter("main_gpu", context_params.main_gpu);
-  this->get_parameter("tensor_split", tensor_split);
+  pnh_.param("n_gpu_layers", context_params.n_gpu_layers, 0);
+  pnh_.param("main_gpu", context_params.main_gpu, 0);
+  pnh_.param("tensor_split", tensor_split, {0.0});
 
-  this->get_parameter("rope_freq_scale", context_params.rope_freq_scale);
-  this->get_parameter("rope_freq_base", context_params.rope_freq_base);
+  pnh_.param("rope_freq_scale", context_params.rope_freq_scale, 1.0f);
+  pnh_.param("rope_freq_base", context_params.rope_freq_base, 10000.0f);
 
-  this->get_parameter("low_vram", context_params.low_vram);
-  this->get_parameter("mul_mat_q", context_params.mul_mat_q);
-  this->get_parameter("f16_kv", context_params.f16_kv);
-  this->get_parameter("logits_all", context_params.logits_all);
-  this->get_parameter("vocab_only", context_params.vocab_only);
-  this->get_parameter("use_mmap", context_params.use_mmap);
-  this->get_parameter("use_mlock", context_params.use_mlock);
-  this->get_parameter("embedding", context_params.embedding);
+  pnh_.param("low_vram", context_params.low_vram, false);
+  pnh_.param("mul_mat_q", context_params.mul_mat_q, false);
+  pnh_.param("f16_kv", context_params.f16_kv, true);
+  pnh_.param("logits_all", context_params.logits_all, false);
+  pnh_.param("vocab_only", context_params.vocab_only, false);
+  pnh_.param("use_mmap", context_params.use_mmap, true);
+  pnh_.param("use_mlock", context_params.use_mlock, false);
+  pnh_.param("embedding", context_params.embedding, true);
 
-  this->get_parameter("n_threads", eval_params.n_threads);
-  this->get_parameter("n_predict", eval_params.n_predict);
-  this->get_parameter("n_keep", eval_params.n_keep);
-  this->get_parameter("n_batch", eval_params.n_batch);
+  pnh_.param("n_threads", eval_params.n_threads, 1);
+  pnh_.param("n_predict", eval_params.n_predict, 128);
+  pnh_.param("n_keep", eval_params.n_keep, -1);
+  pnh_.param("n_batch", eval_params.n_batch);
 
-  this->get_parameter("model", model);
-  this->get_parameter("lora_adapter", lora_adapter);
-  this->get_parameter("lora_base", lora_base);
-  this->get_parameter("numa", numa);
+  pnh_.param("model", model, static_cast<std::string>(""));
+  pnh_.param("lora_adapter", lora_adapter, static_cast<std::string>(""));
+  pnh_.param("lora_base", lora_base, static_cast<std::string>(""));
+  pnh_.param("numa", numa, false);
 
-  this->get_parameter("prefix", prefix);
-  this->get_parameter("suffix", suffix);
-  this->get_parameter("stop", stop);
+  pnh_.param("prefix", prefix, static_cast<std::string>(""));
+  pnh_.param("suffix", suffix, static_cast<std::string>(""));
+  pnh_.param("stop", stop, static_cast<std::string>(""));
 
-  this->get_parameter("prompt", prompt);
-  this->get_parameter("file", file_path);
+  pnh_.param("prompt", prompt, static_cast<std::string>(""));
+  pnh_.param("file", file_path, static_cast<std::string>(""));
 
   // parse tensor_split
   context_params.tensor_split =
@@ -152,8 +115,7 @@ LlamaNode::LlamaNode() : rclcpp::Node("llama_node") {
   if (!file_path.empty()) {
     std::ifstream file(file_path.c_str());
     if (!file) {
-      RCLCPP_ERROR(this->get_logger(), "Failed to open file %s",
-                   file_path.c_str());
+      ROS_ERROR_STREAM("Failed to open file " << file_path);
     }
     std::copy(std::istreambuf_iterator<char>(file),
               std::istreambuf_iterator<char>(), back_inserter(prompt));
@@ -162,86 +124,74 @@ LlamaNode::LlamaNode() : rclcpp::Node("llama_node") {
                                  nullptr);
 
   // services
-  this->tokenize_service_ = this->create_service<llama_msgs::srv::Tokenize>(
-      "tokenize",
-      std::bind(&LlamaNode::tokenize_service_callback, this, _1, _2));
-  this->generate_embeddings_service_ =
-      this->create_service<llama_msgs::srv::GenerateEmbeddings>(
-          "generate_embeddings",
-          std::bind(&LlamaNode::generate_embeddings_service_callback, this, _1,
-                    _2));
+  this->tokenize_service_ = nh_.advertiseService(
+      "tokenize", &LlamaNode::tokenize_service_callback, this);
+  this->generate_embeddings_service_ = nh_.advertiseService(
+      "generate_embeddings", &LlamaNode::generate_embeddings_service_callback,
+      this);
 
-  // generate reponse action server
-  this->goal_handle_ = nullptr;
-  this->generate_response_action_server_ =
-      rclcpp_action::create_server<GenerateResponse>(
-          this, "generate_response",
-          std::bind(&LlamaNode::handle_goal, this, _1, _2),
-          std::bind(&LlamaNode::handle_cancel, this, _1),
-          std::bind(&LlamaNode::handle_accepted, this, _1));
+  // start reponse action server
+  generate_response_action_server_ = std::make_unique<
+      actionlib::SimpleActionServer<llama_msgs::GenerateResponseAction>>(
+      nh_, "generate_response", boost::bind(&LlamaNode::execute, this, _1),
+      false);
+  generate_response_action_server_->start();
 
-  RCLCPP_INFO(this->get_logger(), "Llama Node started");
+  ROS_INFO_STREAM("Llama Node started");
 }
 
-void LlamaNode::tokenize_service_callback(
-    const std::shared_ptr<llama_msgs::srv::Tokenize::Request> request,
-    std::shared_ptr<llama_msgs::srv::Tokenize::Response> response) {
+bool LlamaNode::tokenize_service_callback(
+    llama_msgs::Tokenize::Request &request,
+    llama_msgs::Tokenize::Response &response) {
 
-  response->tokens = this->llama->tokenize(request->prompt, false);
+  response.tokens = this->llama->tokenize(request.prompt, false);
+  return true;
 }
 
-void LlamaNode::generate_embeddings_service_callback(
-    const std::shared_ptr<llama_msgs::srv::GenerateEmbeddings::Request> request,
-    std::shared_ptr<llama_msgs::srv::GenerateEmbeddings::Response> response) {
+bool LlamaNode::generate_embeddings_service_callback(
+    llama_msgs::GenerateEmbeddings::Request &request,
+    llama_msgs::GenerateEmbeddings::Response &response) {
 
   if (this->llama->is_embedding()) {
-    response->embeddings = this->llama->generate_embeddings(request->prompt);
+    response.embeddings = this->llama->generate_embeddings(request.prompt);
   }
-}
-
-rclcpp_action::GoalResponse
-LlamaNode::handle_goal(const rclcpp_action::GoalUUID &uuid,
-                       std::shared_ptr<const GenerateResponse::Goal> goal) {
-  (void)uuid;
-  (void)goal;
-
-  if (this->goal_handle_ != nullptr && this->goal_handle_->is_active()) {
-    return rclcpp_action::GoalResponse::REJECT;
-  }
-
-  return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
-}
-
-rclcpp_action::CancelResponse LlamaNode::handle_cancel(
-    const std::shared_ptr<GoalHandleGenerateResponse> goal_handle) {
-  (void)goal_handle;
-  RCLCPP_INFO(this->get_logger(), "Received request to cancel");
-  this->llama->cancel();
-  return rclcpp_action::CancelResponse::ACCEPT;
-}
-
-void LlamaNode::handle_accepted(
-    const std::shared_ptr<GoalHandleGenerateResponse> goal_handle) {
-  this->goal_handle_ = goal_handle;
-  std::thread{std::bind(&LlamaNode::execute, this, _1), goal_handle}.detach();
+  return true;
 }
 
 void LlamaNode::execute(
-    const std::shared_ptr<GoalHandleGenerateResponse> goal_handle) {
+    const llama_msgs::GenerateResponseGoalConstPtr &goal) {
 
   // get goal data
-  std::string prompt = goal_handle->get_goal()->prompt;
-  bool reset = goal_handle->get_goal()->reset;
-  auto sampling_config = goal_handle->get_goal()->sampling_config;
+  std::string prompt = goal->prompt;
+  bool reset = goal->reset;
+  auto sampling_config = goal->sampling_config;
 
-  auto result = std::make_shared<GenerateResponse::Result>();
-  this->goal_handle_ = goal_handle;
+  auto result = std::make_shared<llama_msgs::GenerateResponseResult>();
 
-  RCLCPP_INFO(this->get_logger(), "Prompt received: %s", prompt.c_str());
+  ROS_INFO_STREAM("Prompt received: " << prompt);
 
   // reset llama
   if (reset) {
     this->llama->reset();
+  }
+
+  if (use_default_sampling_config_) {
+    sampling_config.ignore_eos = false;
+    sampling_config.temp = 0.80;
+    sampling_config.top_k = 40;
+    sampling_config.top_p = 0.95;
+    sampling_config.tfs_z = 1.00;
+    sampling_config.typical_p = 1.00;
+    sampling_config.repeat_last_n = 64;
+    sampling_config.repeat_penalty = 1.10;
+    sampling_config.presence_penalty = 0.00;
+    sampling_config.frequency_penalty = 0.00;
+    sampling_config.mirostat = 0;
+    sampling_config.mirostat_eta = 0.10;
+    sampling_config.mirostat_tau = 5.0;
+    sampling_config.penalize_nl = true;
+    sampling_config.n_probs = 1;
+    sampling_config.grammar = "";
   }
 
   // prepare sampling params
@@ -286,15 +236,15 @@ void LlamaNode::execute(
   // call llama
   auto completion_results = this->llama->generate_response(
       prompt, true, sampling_params,
-      std::bind(&LlamaNode::send_text, this, _1));
+      std::bind(&LlamaNode::send_text, this, std::placeholders::_1));
 
   for (auto completion : completion_results) {
     result->response.text.append(this->llama->detokenize({completion.token}));
     result->response.tokens.push_back(completion.token);
 
-    llama_msgs::msg::TokenProbArray probs_msg;
+    llama_msgs::TokenProbArray probs_msg;
     for (auto prob : completion.probs) {
-      llama_msgs::msg::TokenProb aux;
+      llama_msgs::TokenProb aux;
       aux.token = prob.token;
       aux.probability = prob.probability;
       aux.token_text = this->llama->detokenize({prob.token});
@@ -303,56 +253,38 @@ void LlamaNode::execute(
     result->response.probs.push_back(probs_msg);
   }
 
-  if (rclcpp::ok()) {
-
-    if (this->goal_handle_->is_canceling()) {
-      this->goal_handle_->canceled(result);
+  if (ros::ok()) {
+    if (generate_response_action_server_->isPreemptRequested()) {
+      generate_response_action_server_->setPreempted(*result);
     } else {
-      this->goal_handle_->succeed(result);
+      generate_response_action_server_->setSucceeded(*result);
     }
-
-    this->goal_handle_ = nullptr;
   }
 }
 
 void LlamaNode::send_text(const completion_output &completion) {
 
-  if (this->goal_handle_ != nullptr) {
-    auto feedback = std::make_shared<GenerateResponse::Feedback>();
+  auto feedback = std::make_shared<llama_msgs::GenerateResponseFeedback>();
 
-    feedback->partial_response.text =
-        this->llama->detokenize({completion.token});
-    feedback->partial_response.token = completion.token;
-    feedback->partial_response.probs.chosen_token = completion.token;
+  feedback->partial_response.text =
+      this->llama->detokenize({completion.token});
+  feedback->partial_response.token = completion.token;
+  feedback->partial_response.probs.chosen_token = completion.token;
 
-    for (auto prob : completion.probs) {
-      llama_msgs::msg::TokenProb aux;
-      aux.token = prob.token;
-      aux.probability = prob.probability;
-      aux.token_text = this->llama->detokenize({prob.token});
-      feedback->partial_response.probs.data.push_back(aux);
-    }
-
-    this->goal_handle_->publish_feedback(feedback);
+  for (auto prob : completion.probs) {
+    llama_msgs::TokenProb aux;
+    aux.token = prob.token;
+    aux.probability = prob.probability;
+    aux.token_text = this->llama->detokenize({prob.token});
+    feedback->partial_response.probs.data.push_back(aux);
   }
-}
 
-void sigint_handler(int signo) {
-  if (signo == SIGINT) {
-    _exit(130);
-  }
+  generate_response_action_server_->publishFeedback(*feedback);
 }
 
 int main(int argc, char *argv[]) {
-
-  struct sigaction sigint_action;
-  sigint_action.sa_handler = sigint_handler;
-  sigemptyset(&sigint_action.sa_mask);
-  sigint_action.sa_flags = 0;
-  sigaction(SIGINT, &sigint_action, NULL);
-
-  rclcpp::init(argc, argv);
-  rclcpp::spin(std::make_shared<LlamaNode>());
-  rclcpp::shutdown();
+  ros::init(argc, argv, "llama_node");
+  LlamaNode llama_node;
+  ros::spin();
   return 0;
 }

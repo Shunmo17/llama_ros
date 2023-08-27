@@ -23,57 +23,49 @@
 # SOFTWARE.
 
 
-import rclpy
-from rclpy.node import Node
-from rclpy.action import ActionClient
-from llama_msgs.action import GenerateResponse
+import rospy
+import actionlib
+from llama_msgs.msg import GenerateResponseAction, GenerateResponseGoal, GenerateResponseFeedback
 
 
-class LlamaClientNode(Node):
+class LlamaClientNode():
 
     def __init__(self) -> None:
-        super().__init__("llama_client_node")
-
-        self.declare_parameter(
-            "prompt", "Do you know the city of León from Spain?\nCan you tell me a bit about its history?")
-        self.prompt = self.get_parameter(
-            "prompt").get_parameter_value().string_value
+        self.prompt = rospy.get_param("~prompt")
         self.prompt = self.prompt.replace("\\n", "\n")
 
         self._get_result_future = None
-        self._action_client = ActionClient(
-            self, GenerateResponse, "/llama/generate_response")
+        self._action_client = actionlib.SimpleActionClient("/generate_response",
+            GenerateResponseAction)
 
     def text_cb(self, msg) -> None:
-        feedback: GenerateResponse.Feedback = msg.feedback
-        print(feedback.partial_response.text, end="", flush=True)
+        feedback: GenerateResponseFeedback = msg
+        rospy.logdebug(feedback.partial_response.text)
 
     def send_prompt(self) -> None:
 
-        goal = GenerateResponse.Goal()
+        goal = GenerateResponseGoal()
         goal.prompt = self.prompt
         goal.sampling_config.temp = 0.2
         goal.sampling_config.repeat_last_n = 8
 
         self._action_client.wait_for_server()
-        send_goal_future = self._action_client.send_goal_async(
-            goal, feedback_callback=self.text_cb)
+        send_goal_future = self._action_client.send_goal(
+            goal, feedback_cb=self.text_cb)
+        self._action_client.wait_for_result()
 
-        rclpy.spin_until_future_complete(self, send_goal_future)
-        get_result_future = send_goal_future.result().get_result_async()
+        result: GenerateResponse.Result = self._action_client.get_result()
 
-        rclpy.spin_until_future_complete(self, get_result_future)
-        # result: GenerateResponse.Result = get_result_future.result().result
-
-        self.get_logger().info("END")
+        print("//////////////////////////////////////////////////")
+        rospy.loginfo(len(result.response.text.split(r"\n")))
+        for txt in result.response.text.split(r"\n"):
+            rospy.loginfo(txt)
 
 
 def main():
 
-    rclpy.init()
-    node = LlamaClientNode()
-    node.send_prompt()
-    rclpy.shutdown()
+    rospy.init_node("llama_client_node")
+    LlamaClientNode().send_prompt()
 
 
 if __name__ == "__main__":

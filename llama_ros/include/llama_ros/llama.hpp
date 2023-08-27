@@ -26,6 +26,7 @@
 #include <functional>
 #include <string>
 #include <vector>
+#include <unordered_map>
 
 #include "examples/grammar-parser.h"
 #include "llama.h"

@@ -23,59 +23,49 @@
 #ifndef LLAMA_ROS__LLAMA_NODE_HPP
 #define LLAMA_ROS__LLAMA_NODE_HPP
 
-#include <rclcpp/rclcpp.hpp>
-#include <rclcpp_action/rclcpp_action.hpp>
+#include <ros/ros.h>
+#include <actionlib/server/simple_action_server.h>
 
 #include <memory>
 #include <string>
 
 #include "llama.h"
-#include "llama_msgs/action/generate_response.hpp"
-#include "llama_msgs/srv/generate_embeddings.hpp"
-#include "llama_msgs/srv/tokenize.hpp"
+#include "llama_msgs/GenerateResponseAction.h"
+#include "llama_msgs/GenerateEmbeddings.h"
+#include "llama_msgs/Tokenize.h"
 #include "llama_ros/llama.hpp"
 namespace llama_ros {
 
-class LlamaNode : public rclcpp::Node {
-
-  using GenerateResponse = llama_msgs::action::GenerateResponse;
-  using GoalHandleGenerateResponse =
-      rclcpp_action::ServerGoalHandle<GenerateResponse>;
+class LlamaNode {
 
 public:
   LlamaNode();
 
 private:
   std::shared_ptr<Llama> llama;
+  
+  ros::NodeHandle nh_;
+  ros::NodeHandle pnh_;
 
-  // ros2
-  rclcpp::Service<llama_msgs::srv::Tokenize>::SharedPtr tokenize_service_;
-  rclcpp::Service<llama_msgs::srv::GenerateEmbeddings>::SharedPtr
-      generate_embeddings_service_;
-  rclcpp_action::Server<GenerateResponse>::SharedPtr
+  bool use_default_sampling_config_;
+
+  // ros1
+  ros::ServiceServer tokenize_service_;
+  ros::ServiceServer generate_embeddings_service_;
+  std::unique_ptr<
+      actionlib::SimpleActionServer<llama_msgs::GenerateResponseAction>>
       generate_response_action_server_;
-  GenerateResponse::Goal current_goal_;
-  std::shared_ptr<GoalHandleGenerateResponse> goal_handle_;
   std::mutex handle_accepted_mtx_;
 
   // methods
-  void tokenize_service_callback(
-      const std::shared_ptr<llama_msgs::srv::Tokenize::Request> request,
-      std::shared_ptr<llama_msgs::srv::Tokenize::Response> response);
-  void generate_embeddings_service_callback(
-      const std::shared_ptr<llama_msgs::srv::GenerateEmbeddings::Request>
-          request,
-      std::shared_ptr<llama_msgs::srv::GenerateEmbeddings::Response> response);
+  bool tokenize_service_callback(
+      llama_msgs::Tokenize::Request &request,
+      llama_msgs::Tokenize::Response &response);
+  bool generate_embeddings_service_callback(
+     llama_msgs::GenerateEmbeddings::Request &request,
+     llama_msgs::GenerateEmbeddings::Response &response);
 
-  rclcpp_action::GoalResponse
-  handle_goal(const rclcpp_action::GoalUUID &uuid,
-              std::shared_ptr<const GenerateResponse::Goal> goal);
-  rclcpp_action::CancelResponse
-  handle_cancel(const std::shared_ptr<GoalHandleGenerateResponse> goal_handle);
-  void handle_accepted(
-      const std::shared_ptr<GoalHandleGenerateResponse> goal_handle);
-
-  void execute(const std::shared_ptr<GoalHandleGenerateResponse> goal_handle);
+  void execute(const llama_msgs::GenerateResponseGoalConstPtr &goal);
   void send_text(const completion_output &completion);
 };
 

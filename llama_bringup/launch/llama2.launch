@@ -1,0 +1,15 @@
+<launch>
+    <node pkg="llama_ros" type="llama_node" name="llama_node" output="screen">
+        <param name="n_ctx" value="512" />
+        <param name="n_threads" value="4" />
+        <param name="n_predict" value="512" />
+        <param name="n_batch" value="8" />
+        <param name="n_gpu_layers" value="32" />
+        <param name="model" value="$(find llama_bringup)/models/llama-2-13b-chat.ggmlv3.q2_K.bin" />
+        <param name="prefix" value="\n\n### Instruction:\n" />
+        <param name="suffix" value="\n\n### Response:\n" />
+        <param name="stop" value="### Instruction:\n" />
+        <param name="use_default_sampling_config" value="true" />
+        <param name="file" value="" />
+    </node>
+</launch>

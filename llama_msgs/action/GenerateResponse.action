@@ -1,7 +1,7 @@
-string prompt                       # prompt
-bool reset false                    # whether to reset the context
-SamplingConfig sampling_config      # sampling config
+string prompt                                   # prompt
+bool reset                                      # whether to reset the context
+llama_msgs/SamplingConfig sampling_config       # sampling config
 ---
-Response response                   # final response
+llama_msgs/Response response                    # final response
 ---
-PartialResponse partial_response    # partial response
+llama_msgs/PartialResponse partial_response     # partial response

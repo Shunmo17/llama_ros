@@ -1,25 +1,45 @@
-cmake_minimum_required(VERSION 3.8)
+cmake_minimum_required(VERSION 3.0.2)
 project(llama_msgs)
 
-if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  add_compile_options(-Wall -Wextra -Wpedantic)
-endif()
-
-# find dependencies
-find_package(ament_cmake REQUIRED)
-find_package(rosidl_default_generators REQUIRED)
-
-rosidl_generate_interfaces(${PROJECT_NAME}
-  "msg/TokenProb.msg"
-  "msg/TokenProbArray.msg"
-  "msg/Response.msg"
-  "msg/PartialResponse.msg"
-  "msg/LogitBias.msg"
-  "msg/LogitBiasArray.msg"
-  "msg/SamplingConfig.msg"
-  "action/GenerateResponse.action"
-  "srv/GenerateEmbeddings.srv"
-  "srv/Tokenize.srv"
+find_package(catkin REQUIRED COMPONENTS
+  message_generation
+  std_msgs
+  actionlib_msgs 
 )
 
-ament_package()
+add_message_files(
+  FILES
+  TokenProb.msg
+  TokenProbArray.msg
+  Response.msg
+  PartialResponse.msg
+  LogitBias.msg
+  LogitBiasArray.msg
+  SamplingConfig.msg
+)
+
+add_service_files(
+  FILES
+  GenerateEmbeddings.srv
+  Tokenize.srv
+)
+
+add_action_files(
+  FILES
+  GenerateResponse.action
+)
+
+generate_messages(
+  DEPENDENCIES
+  std_msgs
+  actionlib_msgs 
+)
+
+catkin_package(
+  CATKIN_DEPENDS 
+  message_runtime
+)
+
+include_directories(
+  ${catkin_INCLUDE_DIRS}
+)

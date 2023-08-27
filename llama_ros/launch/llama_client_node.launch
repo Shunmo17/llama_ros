@@ -1,0 +1,7 @@
+<launch>
+    <arg name="prompt" value="Hello. Who are you?" />
+
+    <node pkg="llama_ros" type="llama_client_node.py" name="llama_client_node" output="screen">
+        <param name="prompt" value="$(arg prompt)" />
+    </node>
+</launch>

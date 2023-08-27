@@ -1,3 +1,3 @@
 string text
 int32[] tokens
-TokenProbArray[] probs
+llama_msgs/TokenProbArray[] probs
